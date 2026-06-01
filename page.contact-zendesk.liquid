@@ -1,0 +1,137 @@
+{% comment %}
+  templates/page.contact-zendesk.liquid
+
+  Assign this template to a Shopify page (Online Store > Pages > [page] >
+  Theme template > contact-zendesk).
+
+  The form posts JSON to the Vercel relay, which creates a Zendesk request
+  against ticket form 48536354155796.
+
+  Before going live:
+  - Replace RELAY_ENDPOINT with your deployed Vercel URL.
+  - Replace RECAPTCHA_SITE_KEY with the production reCAPTCHA v2 site key.
+  - Add inputs for any Zendesk custom fields (see the customFields note below).
+{% endcomment %}
+
+<div class="page-width zendesk-contact" style="max-width:680px;margin:0 auto;padding:40px 20px;">
+  <h1>{{ page.title }}</h1>
+  <div class="rte">{{ page.content }}</div>
+
+  <form id="zendesk-form" class="zendesk-form" novalidate>
+    <div class="zd-field">
+      <label for="zd-name">Name</label>
+      <input type="text" id="zd-name" name="name" required>
+    </div>
+
+    <div class="zd-field">
+      <label for="zd-email">Email</label>
+      <input type="email" id="zd-email" name="email" required>
+    </div>
+
+    <div class="zd-field">
+      <label for="zd-subject">Subject</label>
+      <input type="text" id="zd-subject" name="subject" required>
+    </div>
+
+    <div class="zd-field">
+      <label for="zd-description">Message</label>
+      <textarea id="zd-description" name="description" rows="6" required></textarea>
+    </div>
+
+    {% comment %}
+      CUSTOM FIELDS:
+      For each Zendesk custom field on form 48536354155796, add an input here
+      and collect it in the script below into the customFields array as
+      { id: <field_id>, value: <input value> }. For dropdowns, the value must
+      be the option's API value (tag), not its display label.
+
+      Example dropdown:
+      <div class="zd-field">
+        <label for="zd-cf-123456">Order number</label>
+        <input type="text" id="zd-cf-123456" data-zd-field-id="123456">
+      </div>
+    {% endcomment %}
+
+    <div class="zd-field">
+      <div class="g-recaptcha" data-sitekey="RECAPTCHA_SITE_KEY"></div>
+    </div>
+
+    <button type="submit" class="zd-submit">Send</button>
+    <p id="zd-status" role="status" aria-live="polite"></p>
+  </form>
+</div>
+
+<style>
+  .zendesk-form .zd-field { margin-bottom: 18px; }
+  .zendesk-form label { display:block; margin-bottom:6px; font-weight:600; }
+  .zendesk-form input,
+  .zendesk-form textarea {
+    width:100%; padding:12px; border:1px solid #ccc; border-radius:6px;
+    font-size:16px; box-sizing:border-box;
+  }
+  .zendesk-form .zd-submit {
+    padding:14px 28px; font-size:16px; cursor:pointer; border:0; border-radius:6px;
+  }
+  .zendesk-form .zd-submit[disabled] { opacity:.6; cursor:default; }
+  #zd-status { margin-top:14px; font-size:15px; }
+</style>
+
+<script src="https://www.google.com/recaptcha/api.js" async defer></script>
+<script>
+  (function () {
+    var RELAY_ENDPOINT = "https://YOUR-PROJECT.vercel.app/api/zendesk-request";
+
+    var form = document.getElementById("zendesk-form");
+    var status = document.getElementById("zd-status");
+    var submitBtn = form.querySelector(".zd-submit");
+
+    form.addEventListener("submit", async function (e) {
+      e.preventDefault();
+
+      var token = (window.grecaptcha && grecaptcha.getResponse()) || "";
+      if (!token) {
+        status.textContent = "Please complete the reCAPTCHA.";
+        return;
+      }
+
+      // Collect any custom-field inputs marked with data-zd-field-id
+      var customFields = [];
+      form.querySelectorAll("[data-zd-field-id]").forEach(function (el) {
+        if (el.value !== "") {
+          customFields.push({ id: el.getAttribute("data-zd-field-id"), value: el.value });
+        }
+      });
+
+      submitBtn.disabled = true;
+      status.textContent = "Sending...";
+
+      try {
+        var resp = await fetch(RELAY_ENDPOINT, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            name: form.name.value,
+            email: form.email.value,
+            subject: form.subject.value,
+            description: form.description.value,
+            customFields: customFields,
+            token: token
+          })
+        });
+
+        if (resp.ok) {
+          status.textContent = "Thanks, your message has been sent.";
+          form.reset();
+          if (window.grecaptcha) grecaptcha.reset();
+        } else {
+          status.textContent = "Something went wrong. Please try again.";
+          if (window.grecaptcha) grecaptcha.reset();
+        }
+      } catch (err) {
+        status.textContent = "Network error. Please try again.";
+      } finally {
+        submitBtn.disabled = false;
+      }
+    });
+  })();
+</script>
